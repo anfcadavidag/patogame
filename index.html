@@ -59,6 +59,8 @@ const FRASES_ITALIANO = [
   "¡Andiamo!",
 ];
 const VIDAS_INICIALES = 5;
+// Mundos donde dos gaticos esperan al pato junto a la meta (0 = mundo 1)
+const MUNDOS_CON_GATICOS = [0];
 
 // Skin del pato en cada mundo (en orden: mundo 1 … mundo 8). Puedes reordenarlos.
 const SKIN_POR_MUNDO = ['medico', 'italiano', 'vaquero', 'batman', 'playero', 'esquimal', 'bombero', 'astronauta'];
@@ -154,6 +156,7 @@ const SFX = {
   clear: () => [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, 0.16, 'square', 0.05, null, i * 0.12)),
   quack: () => { tone(620, 0.08, 'sawtooth', 0.05, 420); tone(580, 0.1, 'sawtooth', 0.045, 360, 0.1); },
   deny:  () => tone(160, 0.2, 'square', 0.05, 120),
+  meow:  () => { tone(620, 0.12, 'triangle', 0.07, 950); tone(950, 0.3, 'triangle', 0.07, 480, 0.12); },
 };
 // =====================================================================
 //  Música electrónica de la rave (sintetizada, 128 BPM)
@@ -916,6 +919,7 @@ function updateClear() {
     p.anim += 0.3;
     if (p.x > L.tubX + T) {
       p.hidden = true; SFX.quack();
+      if (hasCats()) SFX.meow();
       if (TH.goal === 'duomo') { [784, 659, 523, 392].forEach((f, i) => tone(f, 0.6, 'triangle', 0.06, null, 0.2 + i * 0.35)); burst(L.tubX + T * 1.4, L.endGh * T - 30, '#ffd84d', 25, 4); }
       else burst(L.tubX + T * 1.5, L.endGh * T - 40, '#e0f4ff', 25, 4);
     }
@@ -923,6 +927,11 @@ function updateClear() {
     if (G.timer % 6 === 0) particles.push({ x: L.tubX + Math.random() * T * 5 - T, y: L.endGh * T - 330, vx: (Math.random() - 0.5) * 1.5, vy: 1, life: 90, max: 90, c: ['#ffffff', '#3f8f5a', '#e57373', '#ffd84d'][Math.floor(Math.random() * 4)], r: 3, g: 0.03, sq: true });
   } else if (G.timer % 8 === 0) {
     particles.push({ x: L.tubX + T * 0.5 + Math.random() * T * 2, y: L.endGh * T - 40, vx: 0, vy: -1, life: 60, max: 60, c: 'rgba(220,240,255,.8)', r: 4 + Math.random() * 5, g: -0.01 });
+  }
+  // los gaticos celebran con corazones cuando el pato llega a la bañera
+  if (p.hidden && hasCats() && G.timer % 12 === 0) {
+    const cx = catSpots()[Math.floor(G.timer / 12) % 2];
+    particles.push({ heart: true, x: cx + (Math.random() - 0.5) * 20, y: L.endGh * T - 50, vx: (Math.random() - 0.5) * 1.2, vy: -1.4, life: 70, max: 70, g: 0 });
   }
   updateParticles();
   updateCamera(false);
@@ -1459,6 +1468,85 @@ function drawFlagAndTub() {
   ctx.fillStyle = 'rgba(255,255,255,.95)';
   for (let k = 0; k < 6; k++) circ(tx + 10 + k * 15, gy - 50 + Math.sin(G.t * 0.08 + k) * 2, 7 + (k % 2) * 3);
   txt('META', tx + tw / 2, gy - 18, 13, '#4a90c2', 'center', null);
+  if (hasCats()) drawCats(gy);
+}
+
+// ---------- Dos gaticos esperando al pato junto a la bañera ----------
+function hasCats() { return MUNDOS_CON_GATICOS.includes(G.world); }
+function catSpots() { return [L.tubX + 4.3 * T, L.tubX + 5.7 * T]; }
+const GATICOS = [
+  // atigrado gris-café con cara, pecho y patitas blancas, ojos verdes
+  { col: '#75685e', dark: '#4b413a', belly: '#fff', blaze: '#fff', paws: '#fff', eye: '#a9d86e', stripes: true },
+  // gris claro atigrado, hocico clarito, ojos azul pálido
+  { col: '#c8beb3', dark: '#958a80', belly: '#e9e3dc', muzzle: '#eee8e1', paws: '#e9e3dc', eye: '#a9cbe0', stripes: true },
+];
+function drawCats(gy) {
+  const p = player, home = G.screen === 'clear' && p.hidden;
+  const near = G.screen === 'play' && !p.dead && p.x > L.flagX - 8 * T;
+  const xs = catSpots();
+  xs.forEach((x, i) => {
+    const hop = home ? Math.abs(Math.sin(G.t * 0.13 + i * 1.6)) * 22
+      : near ? Math.abs(Math.sin(G.t * 0.1 + i * 1.6)) * 6 : 0;
+    drawCat(x, gy - hop, 1.25, -1, { ...GATICOS[i], phase: i * 2.3, happy: home || near });
+  });
+  if (near && Math.floor(G.t / 70) % 2 === 0) {
+    const i = Math.floor(G.t / 140) % 2;
+    drawBubble('¡Miau!', xs[i], gy - 52, 1);
+  }
+  if (home && G.timer < 230) drawBubble('¡Miau miau! 💕', (xs[0] + xs[1]) / 2, gy - 72, Math.min(1, (230 - G.timer) / 20));
+}
+// cx = centro, by = pies. Por defecto mira a la derecha (facing = -1 lo voltea)
+function drawCat(cx, by, sc, facing, o) {
+  const t = G.t * 0.06 + o.phase;
+  ctx.save(); ctx.translate(cx, by); ctx.scale(sc * facing, sc);
+  // cola
+  ctx.strokeStyle = o.col; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-12, -8);
+  ctx.quadraticCurveTo(-28, -12, -22 + Math.sin(t * (o.happy ? 3 : 1)) * 5, -30); ctx.stroke();
+  // cuerpo sentado y patitas
+  ctx.fillStyle = o.col; ell(-2, -11, 14, 11);
+  if (o.belly) { ctx.fillStyle = o.belly; ell(5, -10, 6, 8); }
+  ctx.fillStyle = o.paws || o.dark; ell(-11, -2, 5, 3); ell(8, -2, 5, 3);
+  if (o.stripes) {
+    ctx.strokeStyle = o.dark; ctx.lineWidth = 2;
+    for (const sx of [-10, -4, 2]) { ctx.beginPath(); ctx.moveTo(sx, -20); ctx.quadraticCurveTo(sx - 2, -14, sx, -8); ctx.stroke(); }
+  }
+  // orejas
+  ctx.fillStyle = o.col;
+  ctx.beginPath(); ctx.moveTo(1, -30); ctx.lineTo(4, -44); ctx.lineTo(11, -34); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(13, -34); ctx.lineTo(19, -44); ctx.lineTo(21, -29); ctx.fill();
+  ctx.fillStyle = '#ffb3c7';
+  ctx.beginPath(); ctx.moveTo(4, -32); ctx.lineTo(5, -40); ctx.lineTo(9, -34); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(15, -34); ctx.lineTo(18, -40); ctx.lineTo(19, -31); ctx.fill();
+  // cabeza
+  ctx.fillStyle = o.col; circ(11, -25, 11);
+  if (o.stripes) { ctx.fillStyle = o.dark; ctx.fillRect(8, -36, 2, 5); ctx.fillRect(14, -36, 2, 5); }
+  if (o.blaze) {   // mancha blanca que baja de la frente al hocico
+    ctx.fillStyle = o.blaze;
+    ctx.beginPath(); ctx.moveTo(11, -33); ctx.lineTo(13, -33); ctx.lineTo(17, -21); ctx.lineTo(7, -21); ctx.fill();
+    ell(12, -19.5, 7, 5);
+  } else if (o.muzzle) { ctx.fillStyle = o.muzzle; ell(12, -19.5, 6.5, 4.5); }
+  // ojos (parpadean de vez en cuando; felices = ojitos cerrados ^^)
+  const blink = (G.t + o.phase * 40) % 180 < 8;
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 1.8;
+  if (o.happy || blink) {
+    for (const ex of [7, 16]) { ctx.beginPath(); ctx.arc(ex, -25, 2.5, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = o.eye || '#9be36b'; ell(7, -26, 2.8, 3.4); ell(16, -26, 2.8, 3.4);
+    ctx.fillStyle = '#111'; ell(7.5, -26, 1.1, 2.8); ell(16.5, -26, 1.1, 2.8);
+    ctx.fillStyle = '#fff'; circ(8, -27.5, 0.9); circ(17, -27.5, 0.9);
+  }
+  // nariz, boca y bigotes
+  ctx.fillStyle = '#ff8fab';
+  ctx.beginPath(); ctx.moveTo(10, -21.5); ctx.lineTo(14, -21.5); ctx.lineTo(12, -19.5); ctx.fill();
+  ctx.lineWidth = 0.9; ctx.strokeStyle = '#6b4a4a';
+  for (const mx of [10.6, 13.4]) { ctx.beginPath(); ctx.arc(mx, -19.3, 1.4, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+  ctx.strokeStyle = '#f4f4f4'; ctx.lineWidth = 0.9;
+  for (const k of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(6, -20); ctx.lineTo(-3, -21 + k * 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(18, -20); ctx.lineTo(27, -21 + k * 3); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ---------- Catedral de Santa María del Fiore (Florencia) ----------
